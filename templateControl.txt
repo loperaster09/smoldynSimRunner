@@ -1,0 +1,143 @@
+#Last edited by Sander Huisman, 26/11/2018
+#Last edited by Tristan de Waard, 14/12/2018
+
+########################### <Aan te passen!> ##############################################
+
+define TEXTOUTPUT        						#Comment out to disable writing to output file "simOut_numSim.txt"
+#define GRAPHICSOUTPUT   						#Comment out to disable graphics
+define dt 				10^2/(2*1710000)		#tijdsstap in milliseconds
+define superman 		1000					#alles lekker snel reageren!
+	
+variable IED = #TAG:ied						#inter enzyme distance als je scaffold simuleert
+variable numSim = #TAG:i							#getal achter output file, dus xxx in SimOut_xxx.txt
+#random_seed #TAG:seed								#als je seed hetzelfde wil houden
+define makeScaffold								#placeholder=vrije diffusie, makeScaffold=2Dscaffold
+
+define K_GOx_fwd		153.51*superman
+define K_GOx_bck        0.00013*superman
+
+define K_HRP_fwd        3.91e6					#hierbij is HRP_fwd somewhat activation limited
+define K_HRP_bck        0.575*superman
+
+define K_HRP_cat        0.0115*superman
+define K_GOx_cat        0.641*superman
+
+########################### </Aan te passen!> ##############################################
+
+define substrate_mol 4800
+variable neighbour_distance = 19.375644347
+variable linker_len = 7				
+
+dim 3
+boundaries x 0 200
+boundaries y 0 200
+boundaries z 0 200
+
+time_start 0
+time_stop 40
+time_step dt
+
+
+ifdefine GRAPHICSOUTPUT
+    graphics opengl
+    graphic_iter 1
+    frame_thickness 1
+    frame_color black
+    quit_at_end yes            #Quits graphics display as soon as all substrate has reacted to product, enter no if you like
+	background_color 0.5 0.5 0.5
+endif
+
+species Gluc GOx GOx-Gluc Perox HRP HRP-Perox ABTS-
+
+difc Gluc      670000
+difc Perox     1710000
+difc ABTS-     440000
+ifdefine makeScaffold
+    difc GOx    0
+    difc HRP    0
+else
+    difc GOx    375
+    difc HRP    1.44
+endif
+
+color Gluc        yellow
+color Perox       green
+color ABTS-       black
+color GOx         red
+color HRP         blue
+color GOx-Gluc  orange
+color HRP-Perox brown
+
+display_size all     4
+display_size Gluc     1
+display_size Perox  2
+display_size ABTS-  3
+
+ifdefine makeScaffold
+    start_surface scaffold
+        action all both reflect
+        color both magenta 0.8
+        panel rect +1 ((100-IED)/2) 100 100-1.5*neighbour_distance (100+IED) 3*neighbour_distance scaf
+    end_surface
+endif
+
+start_surface box
+    action all front jump
+    thickness 1
+    color both 0 0 0 0
+    panel rect +0 0 0 0 200 200 left
+    panel rect -0 200 0 0 200 200 right
+    panel rect +1 0 0 0 200 200 bottom
+    panel rect -1 0 200 0 200 200 top
+    panel rect +2 0 0 0 200 200 back
+    panel rect -2 0 0 200 200 200 front
+    jump left front <-> right front
+    jump bottom front <-> top front
+    jump back front <-> front front
+end_surface
+
+start_compartment inside_box
+    surface box
+    point 100 100 100
+end_compartment
+
+reaction GOx_fwd GOx + Gluc -> GOx-Gluc         K_GOx_fwd
+reaction GOx_bck GOx-Gluc -> GOx + Gluc         K_GOx_bck
+product_placement GOx_bck pgemmax                 0.2
+
+reaction HRP_fwd HRP + Perox -> HRP-Perox         K_HRP_fwd
+reaction HRP_bck HRP-Perox -> HRP + Perox         K_HRP_bck
+product_placement HRP_bck pgemmax                 0.2
+
+reaction HRP_cat HRP-Perox -> HRP + ABTS-         K_HRP_cat
+reaction GOx_cat GOx-Gluc -> GOx + Perox         K_GOx_cat
+
+compartment_mol substrate_mol Gluc inside_box
+
+ifdefine makeScaffold
+    mol 1 GOx (100-(IED/2)) 100+linker_len 100-neighbour_distance
+    mol 1 GOx (100-(IED/2)) 100+linker_len 100
+    mol 1 GOx (100-(IED/2)) 100+linker_len 100+neighbour_distance
+    mol 1 HRP (100+(IED/2)) 100+linker_len 100-neighbour_distance
+    mol 1 HRP (100+(IED/2)) 100+linker_len 100
+    mol 1 HRP (100+(IED/2)) 100+linker_len 100+neighbour_distance
+else
+    compartment_mol 3 GOx inside_box
+    compartment_mol 3 HRP inside_box
+endif
+
+text_display time Gluc Perox ABTS-
+
+cmd N 10000 ifless Gluc 0.25*substrate_mol stop
+
+
+ifdefine TEXTOUTPUT
+    output_files simSave.txt simOut.txt                        
+    output_file_number simOut.txt numSim
+    output_file_number simSave.txt numSim
+    cmd B savesim simSave.txt
+    cmd B molcountheader simOut.txt
+    cmd N 10000 molcount simOut.txt
+endif
+
+end_file
